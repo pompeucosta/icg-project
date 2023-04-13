@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "./three.module.js",
+                "three/addons/": "./jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        let mesh,mixer,clips,scene,renderer,camera,clock,action;
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xbfd1e5);
+        clock = new THREE.Clock();
+        camera = new THREE.PerspectiveCamera(75,window.innerWidth / window.innerHeight,0.2,5000);
+        camera.position.z += 5;
+        camera.position.y += 1.5;
+        let hemiLight = new THREE.HemisphereLight(0xffffff,0xffffff,1);
+        hemiLight.color.setHSL(0.6,0.6,0.6);
+        hemiLight.groundColor.setHSL(0.1,1,0.4);
+        hemiLight.position.set(0,15,0);
+        scene.add(hemiLight);
+        let dirLight = new THREE.DirectionalLight(0xffffff,1);
+        dirLight.color.setHSL(0.1,1,0.95);
+        dirLight.position.set(0,5,0);
+        dirLight.position.multiplyScalar(100);
+        scene.add(dirLight);
+        dirLight.castShadow = true;
+        renderer = new THREE.WebGLRenderer({antialias: true});
+        renderer.setClearColor(0xbfd1e5);
+        renderer.setSize(window.innerWidth,window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        window.addEventListener("keydown",keydownHandler);
+        window.addEventListener("keyup",keyupHandler);
+        let animationPlaying = "",animationToPlay = "";
+        let animationFinished = false;
+        let animationsMap = new Map();
+
+        const loader = new GLTFLoader();
+            loader.load(
+                // resource URL
+                './char test/character.glb',
+                // called when the resource is loaded
+                function ( gltf ) {
+                    const model = gltf.scene;
+                    model.traverse(function(object)
+                    {
+                        if(object.isMesh)
+                            object.castShadow = true;
+                    });
+                    scene.add( model );
+                    mixer = new THREE.AnimationMixer(model);
+                    // mixer.addEventListener("finished",(e) => 
+                    // {
+                    //     console.log("finished");
+                    //     if(animationPlaying == "Slash")
+                    //     {
+                    //         animationFinished = true;
+                    //     }
+                    // });
+                    console.log(mixer);
+                    clips = gltf.animations;
+                    clips.forEach((a) => 
+                    {
+                        animationsMap.set(a.name,mixer.clipAction(a));
+                    });
+                    action = animationsMap.get("IDLE");
+                    console.log(gltf.animations);
+                    animationToPlay = "IDLE";
+                    animationPlaying = "IDLE";
+                    // action = mixer.clipAction(clip);
+                    action.play();
+                },
+                // called while loading is progressing
+                function ( xhr ) {
+
+                    console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+
+                },
+                // called when loading has errors
+                function ( error ) {
+
+                    console.log( error );
+
+                }
+            );
+
+        animate();
+
+        function animate()
+        {
+            let deltaTime = clock.getDelta();
+            requestAnimationFrame(animate);
+            update(deltaTime);
+            renderer.render(scene,camera);
+        }
+
+        function keydownHandler(event)
+        {
+            event.preventDefault();
+            let key = event.key;
+
+            switch(key)
+            {
+                case "q":
+                    animationToPlay = "Slash";
+                    break;
+            }
+        }
+
+        function keyupHandler(event)
+        {
+            let key = event.key;
+
+            switch(key)
+            {
+                case "q":
+                    animationToPlay = "IDLE";
+                    break;
+            }
+
+            // if(event.keyCode == 32)
+            //     cubeMoveDirection.up = 0;
+        }
+
+        function update(delta)
+        {
+            // console.log(animationToPlay);
+            if(animationToPlay != animationPlaying)
+            {
+                if((animationPlaying == "Slash" && animationFinished) || animationPlaying != "Slash")
+                {
+                    const current = animationsMap.get(animationPlaying);
+                    const toPlay = animationsMap.get(animationToPlay);
+                    if(!toPlay)
+                    {
+                        console.log(animationToPlay);
+                        return;
+                    }
+                    current.fadeOut(0.5);
+                    toPlay.reset().fadeIn(0.5).play();
+                    animationPlaying = animationToPlay;
+                }
+            }
+
+            if(mixer)
+                mixer.update(delta)
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        body
+        {
+            margin: 0%;
+        }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "./three.module.js",
+                "three/addons/": "./jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xbfd1e5);
+        const camera = new THREE.PerspectiveCamera(75,window.innerWidth / window.innerHeight,0.2,5000);
+        camera.position.set(0,5,5);
+        camera.lookAt(0,0,0);
+
+        const renderer = new THREE.WebGLRenderer({antialias: true});
+        renderer.setSize(window.innerWidth,window.innerHeight);
+        document.body.appendChild(renderer.domElement);    
+
+        const controls = new OrbitControls( camera, renderer.domElement );
+
+        const loader = new GLTFLoader();
+        loader.load(
+            // resource URL
+            './test/map.gltf',
+            // called when the resource is loaded
+            function ( gltf ) {
+                const model = gltf.scene;
+                model.traverse(function(object)
+                {
+                    if(object.isMesh)
+                        object.castShadow = true;
+                });
+                scene.add( model );
+
+            },
+            // called while loading is progressing
+            function ( xhr ) {
+
+                console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+
+            },
+            // called when loading has errors
+            function ( error ) {
+
+                console.log( error );
+
+            }
+        );
+        
+        animate();
+        createTorch(-2,0,-16);
+        createTorch(45.8,0,8.6);
+        createTorch(45.8,0,18.8);
+        createTorch(45.8,0,65);
+        createTorch(-2,0,65);
+        createTorch(-2,0,24.5);
+
+        function animate()
+        {
+            requestAnimationFrame(animate);
+            renderer.render(scene,camera);
+        }
+
+        function createTorch(posX,posY,posZ)
+        {
+            const loader = new GLTFLoader();
+            loader.load(
+            // resource URL
+            './t/outdoor_torch.glb',
+            // called when the resource is loaded
+            function ( gltf ) {
+                const model = gltf.scene;
+                model.position.set(posX,posY + 4,posZ)
+                model.scale.set(4,4,4);
+                model.traverse(function(object)
+                {
+                    if(object.isMesh)
+                        object.castShadow = true;
+                });
+                scene.add( model );
+
+                const light = new THREE.PointLight(0xFBB741,10,100,4);
+                light.position.set(posX,10 + posY,posZ);
+                scene.add( light );
+
+                const sphereSize = 1;
+                const pointLightHelper = new THREE.PointLightHelper( light, sphereSize );
+                scene.add( pointLightHelper );
+
+            },
+            // called while loading is progressing
+            function ( xhr ) {
+
+                console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+
+            },
+            // called when loading has errors
+            function ( error ) {
+
+                console.log( error );
+
+            }
+        );
+        }
+    </script>
+</body>
+</html>

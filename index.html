@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Adventure Game</title>
+    <style>
+        body
+        {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "./three.module.js",
+                "three/addons/": "./jsm/"
+            }
+        }
+    </script>
+    <script src="./ammo.js"></script>
+    <script type="module">
+        //TODO: fix player not moving after making the camera face the ground (wtf)
+
+        //https://raw.githubusercontent.com/bulletphysics/bullet3/master/docs/Bullet_User_Manual.pdf
+        //https://threejs.org/docs/index.html?q=light#api/en/lights/DirectionalLight
+        //https://threejs.org/examples/?q=sun#webgl_shaders_sky
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { Sky } from 'three/addons/objects/Sky.js';
+
+        //THREE js variables
+        let scene,renderer,camera,playerObject,sky,directionalLight,clock;
+
+        //AMMMO variables
+        let physicsWorld,ammoTmpTrans,ammoTmpPos,ammoTmpQuat;
+
+        //Events variables
+        let mouseDown,mouseX,mouseY;
+
+        //THREE js constants
+        const cubeMoveDirection = {left:0,right:0,forward:0,back:0};
+        const playerPivot = new THREE.Object3D();
+        const cameraPivot = new THREE.Object3D();
+        const dir = new THREE.Vector3();
+        const sun = new THREE.Vector3();
+
+        const effectController = {
+					turbidity: 10,
+					rayleigh: 3,
+					mieCoefficient: 0.005,
+					mieDirectionalG: 0.7,
+					elevation: 0,
+					azimuth: 180,
+					exposure: 0.5
+				};
+
+        //AMMO constants
+        const rigidBodies = [];
+
+        Ammo().then(start);
+
+        function start()
+        {
+            ammoTmpTrans = new Ammo.btTransform();
+
+            setupPhysicsWorld();
+            setupGraphics();
+            createMap();
+            createPlane();
+            createCube();
+            setupHandlers();
+            renderFrame();
+        }
+
+        function setupHandlers()
+        {
+            window.addEventListener("keydown",keydownHandler);
+            window.addEventListener("keyup",keyupHandler);
+            window.addEventListener("mousemove",onMouseMove);
+            window.addEventListener("mousedown",onMouseDown);
+            window.addEventListener("mouseup",onMouseUp);
+            window.addEventListener("resize",resize);
+        }
+
+        function keydownHandler(event)
+        {
+            event.preventDefault();
+            let key = event.key;
+
+            switch(key)
+            {
+                case "w":
+                    cubeMoveDirection.forward = 1;
+                    break;
+
+                case "s":
+                    cubeMoveDirection.back = 1;
+                    break;
+
+                case "a":
+                    cubeMoveDirection.left = 1;
+                    break;
+
+                case "d":
+                    cubeMoveDirection.right = 1;
+                    break;
+            }
+        }
+
+        function keyupHandler(event)
+        {
+            let key = event.key;
+
+            switch(key)
+            {
+                case "w":
+                    cubeMoveDirection.forward = 0;
+                    break;
+
+                case "s":
+                    cubeMoveDirection.back = 0;
+                    break;
+
+                case "a":
+                    cubeMoveDirection.left = 0;
+                    break;
+
+                case "d":
+                    cubeMoveDirection.right = 0;
+                    break;
+            }
+        }
+
+        function onMouseMove(event) 
+        {
+            if (!mouseDown) {
+                return;
+            }
+
+            event.preventDefault();
+
+            var deltaX = event.clientX - mouseX,
+                deltaY = event.clientY - mouseY;
+            mouseX = event.clientX;
+            mouseY = event.clientY;
+            rotateScene(deltaX, deltaY);
+        }
+
+        function onMouseDown(event) 
+        {
+            event.preventDefault();
+
+            mouseDown = true;
+            mouseX = event.clientX;
+            mouseY = event.clientY;
+        }
+
+        function onMouseUp(event) 
+        {
+            event.preventDefault();
+
+            mouseDown = false;
+        }
+
+        function rotateScene(deltaX, deltaY) 
+        {
+            playerObject.rotation.y += deltaX / 500;
+            cameraPivot.rotation.x -= deltaY / 500;
+        }
+
+        function  resize()
+        {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize( window.innerWidth, window.innerHeight ); 
+        }
+
+        function setupPhysicsWorld()
+        {
+            const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
+            const dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration);
+            const overlappingPairCache = new Ammo.btDbvtBroadphase();
+            const solver = new Ammo.btSequentialImpulseConstraintSolver();
+
+            physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher,overlappingPairCache,solver,collisionConfiguration);
+            physicsWorld.setGravity(new Ammo.btVector3(0,-100,0));
+        }
+
+        function setupGraphics()
+        {
+            clock = new THREE.Clock();
+
+            scene = new THREE.Scene();
+
+            sky = new Sky();
+            sky.scale.setScalar( 450000 );
+            scene.add(sky);
+            
+            directionalLight = new THREE.DirectionalLight(0xffffff);
+            scene.add(directionalLight);
+
+            camera = new THREE.PerspectiveCamera(75,window.innerWidth / window.innerHeight,0.2,5000);
+
+            renderer = new THREE.WebGLRenderer({antialias: true});
+            renderer.setSize(window.innerWidth,window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            renderer.shadowMap.enable = true;
+            renderer.toneMappingExposure = effectController.exposure;
+        }
+
+        function createMap()
+        {
+            const loader = new GLTFLoader();
+            loader.load(
+                './test/map.gltf',
+                function (gltf) {
+                    scene.add( gltf.scene );
+                },
+                function (xhr) {
+                    console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+                },
+                function (error) {
+                    console.log( error );
+                }
+            );
+
+            createWalls();
+            createTreeColliders();
+            createTreeLogColliders();
+            createHouseCollider();
+            createTorches();
+        }
+
+        function createPlane()
+        {
+            const pos = {x:0, y:-1, z:0};
+            const scale = {x:800, y:2, z:800};
+            const mass = 0;
+            createBoxCollider(pos.x,pos.y,pos.z,scale.x,scale.y,scale.z,mass);
+
+            // let blockPlane = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshPhongMaterial(
+            //     {
+            //         color: 0xa0afa4,
+            //         opacity: 0,
+            //         transparent: true
+            //     }));
+            // // let blockPlane = new THREE.Object3D();
+            // groundObjects.push(blockPlane);
+            // blockPlane.position.set(pos.x,pos.y,pos.z);
+            // blockPlane.scale.set(scale.x,scale.y,scale.z);
+            // blockPlane.castShadow = true;
+            // blockPlane.receiveShadow = true;
+
+            // scene.add(blockPlane);
+        }
+
+        function createWalls()
+        {
+            createWall(0,0,90.24,300,300,1);
+            createWall(0,0,-37.02,300,300,1);
+            createWall(-100,0,0,1,300,300);
+            createWall(70,0,0,1,300,300);
+        }
+
+        function createWall(posX,posY,posZ,scaleX,scaleY,scaleZ)
+        {
+            const mass = 0;
+            createBoxCollider(posX,posY,posZ,scaleX,scaleY,scaleZ,mass);
+        }
+
+        function createTreeColliders()
+        {
+            const coords = [
+                {x:-33,z:-10},
+                {x:-33,z:26},
+                {x:-44,z:40},
+                {x:-28,z:54},
+                {x:-12.5,z:68.5},
+                {x:-21.5,z:82.5},
+                {x:-29.9,z:70.4},
+                {x:-44.3,z:75.4},
+                {x:-44.3,z:60.0},
+                {x:-58.4,z:67.2},
+                {x:-73.8,z:73.9},
+                {x:-73.8,z:56.8},
+                {x:-60,z:49},
+                {x:-72.9,z:35},
+                {x:-89,z:35},
+                {x:-89.4,z:17.7},
+                {x:-74,z:-0.8},
+                {x:-68,z:17},
+                {x:-90,z:-0.7},
+                {x:-71,z:-13},
+                {x:-50,z:-12},
+                {x:-59,z:3.4},
+                {x:-43,z:9},
+                {x:-54,z:27},
+                {x:-12,z:-19.8},
+                {x:8,z:-19},
+                {x:24,z:-18},
+                {x:24,z:-31},
+                {x:39,z:-31.5},
+                {x:54,z:-31.6}
+            ]
+
+            coords.forEach((coord) => 
+            {
+                createTreeCollider(coord.x,0,coord.z);
+            });
+
+        }
+
+        function createTreeCollider(posX,posY,posZ)
+        {
+            const mass = 0;
+            const radius = 1;
+            const height = 20;
+            createCapsuleCollider(posX,posY,posZ,mass,radius,height);
+        }
+
+        function createHouseCollider()
+        {
+            const pos = {x:61.5, y:15, z:12};
+            const mass = 0;
+            const radius = 13;
+            const height = 20;
+            createCapsuleCollider(pos.x,pos.y,pos.z,mass,radius,height);
+        }
+
+        function createTreeLogColliders()
+        {
+            const mass = 0;
+            const radius = 0.5;
+            const height = 3;
+            const coords = 
+            [
+                {x:-34.7,z:64.2},
+                {x:-57,z:58},
+                {x:-52.4,z:72.4},
+                {x:-70,z:65},//
+                {x:-64,z:77.8},
+                {x:-86.7,z:53.5},
+                {x:-79.8,z:44.3},
+                {x:-54.7,z:37.7},
+                {x:-82,z:83.7},
+                {x:-82.6,z:27.5},
+                {x:-40.7,z:50.4},
+                {x:-62,z:24.2},
+                {x:-74,z:19},
+                {x:-77.9,z:11.7},
+                {x:85.3,z:7},
+                {x:-72,z:6.72},
+                {x:-62,z:12.4},
+                {x:-49.27,z:14.31},
+                {x:-49.35,z:-0.62},
+                {x:-63.59,z:-7.8},
+                {x:-82.43,z:-12.66},
+                {x:-74.23,z:-28.98},
+                {x:-61.94,z:-22.49},
+                {x:-41.74,z:-20.25},
+                {x:-52.35,z:67.74}
+            ];
+
+            coords.forEach((coord) =>
+            {
+                createCapsuleCollider(coord.x,0,coord.z,mass,radius,height);
+            });
+        }
+
+        function createTreeLogCollider(posX,posY,posZ)
+        {
+            const mass = 0;
+            const radius = 0.5;
+            const height = 3;
+            createCapsuleCollider(posX,posY,posZ,mass,radius,height);
+        }
+
+        function createTorches()
+        {
+            createTorch(-2,0,-16);
+            createTorch(45.8,0,8.6);
+            createTorch(45.8,0,18.8);
+            createTorch(45.8,0,65);
+            createTorch(-2,0,65);
+            createTorch(-2,0,24.5);
+        }
+
+        function createTorch(posX,posY,posZ)
+        {
+            const loader = new GLTFLoader();
+            loader.load(
+            './t/outdoor_torch.glb',
+            function (gltf) {
+                const model = gltf.scene;
+                model.position.set(posX,posY + 4,posZ)
+                model.scale.set(4,4,4);
+                model.traverse(function(object)
+                {
+                    if(object.isMesh)
+                        object.castShadow = true;
+                });
+                scene.add( model );
+                const mass = 0;
+                const radius = 0.1;
+                const height = 13;
+                createCapsuleCollider(posX,posY,posZ,mass,radius,height);
+
+                const light = new THREE.PointLight(0xFBB741,10,100,4);
+                light.position.set(posX,10 + posY,posZ);
+                scene.add( light );
+
+                const sphereSize = 1;
+                const pointLightHelper = new THREE.PointLightHelper( light, sphereSize );
+                scene.add( pointLightHelper );
+
+            },
+            function (xhr) {
+                console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+            },
+            function (error) {
+                console.log( error );
+            }
+            );
+        }
+
+        function createCube()
+        {
+            const pos = {x:0,y:0,z:0};
+            const scale = {x:1,y:1,z:1};
+            const mass = 80;
+
+            let cube = playerObject = new THREE.Mesh(new THREE.BoxGeometry(),new THREE.MeshPhongMaterial({color: 0xa5f382}));
+            playerPivot.add(cube);
+            cube.position.set(pos.x,pos.y,pos.z);
+            cube.scale.set(scale.x,scale.y,scale.z);
+            cube.add(cameraPivot);
+            cameraPivot.add(camera);
+            camera.position.set(0,5,5);
+            camera.lookAt(new THREE.Vector3(0,0,0));
+            cube.castShadow = true;
+            cube.receiveShadow = true;
+
+            scene.add(playerPivot);
+            const body = createBoxCollider(pos.x,pos.y,pos.z,scale.x,scale.y,scale.z,mass);
+            body.setAngularFactor(0);
+
+            playerPivot.userData.physicsBody = body;
+            rigidBodies.push(playerPivot);
+        }
+
+        function createCapsuleCollider(posX,posY,posZ,mass,radius,height)
+        {
+            return createCollider(posX,posY,posZ,mass,new Ammo.btCapsuleShape(radius,height));
+        }
+
+        function createBoxCollider(posX,posY,posZ,scaleX,scaleY,scaleZ,mass)
+        {
+            return createCollider(posX,posY,posZ,mass,new Ammo.btBoxShape(new Ammo.btVector3(scaleX * 0.5,scaleY * 0.5,scaleZ * 0.5)));
+        }
+
+        function createCollider(posX,posY,posZ,mass,colShape)
+        {
+            const pos = {x:posX,y:posY,z:posZ};
+            const transform = new Ammo.btTransform();
+            transform.setIdentity();
+            transform.setOrigin(new Ammo.btVector3(posX,posY,posZ));
+            transform.setRotation(new Ammo.btQuaternion(0,0,0,1));
+
+            const motionState = new Ammo.btDefaultMotionState(transform);
+
+            const localInertia = new Ammo.btVector3(0,0,0);
+            colShape.setMargin(0.05);
+            colShape.calculateLocalInertia(mass,localInertia);
+
+            const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass,motionState,colShape,localInertia);
+            const body = new Ammo.btRigidBody(rbInfo);
+            body.setFriction(4);
+            body.setRollingFriction(10);
+            physicsWorld.addRigidBody(body);
+            return body;
+        }
+
+
+
+        function moveCube()
+        {
+            const speed = 30;
+            
+            const moveX = cubeMoveDirection.right - cubeMoveDirection.left;
+            const moveZ = cubeMoveDirection.back - cubeMoveDirection.forward;
+
+            const physicsBody = playerPivot.userData.physicsBody;
+            const playerPos = physicsBody.getWorldTransform().getOrigin();
+            console.log(playerPos.x() + "---" + playerPos.z());
+
+            if(moveX == 0 && moveZ == 0)
+                return;
+
+            camera.getWorldDirection(dir);
+            const z = dir.clone().multiplyScalar(moveZ);
+            const x = dir.clone().applyAxisAngle(new THREE.Vector3(0,1,0),degToRad(90)).multiplyScalar(moveX);
+
+            const move = new THREE.Vector3(-(z.x + x.x),0,-(z.z + x.z));
+            physicsBody.setLinearVelocity(new Ammo.btVector3(move.x,move.y,move.z).op_mul(speed));
+        }
+
+        function degToRad(degrees) {
+            return degrees * (Math.PI / 180);
+        }
+
+        function updatePhysics(deltaTime)
+        {
+            physicsWorld.stepSimulation(deltaTime,10);
+
+            for(let i = 0; i < rigidBodies.length; i++)
+            {
+                const objThree = rigidBodies[i];
+                const objAmmo = objThree.userData.physicsBody;
+                const ms = objAmmo.getMotionState();
+
+                if(ms)
+                {
+                    ms.getWorldTransform(ammoTmpTrans);
+                    const p = ammoTmpTrans.getOrigin();
+                    const q = ammoTmpTrans.getRotation();
+                    objThree.position.set(p.x(),p.y(),p.z());
+                    objThree.quaternion.set(q.x(),q.y(),q.z(),q.w());
+                }
+            }
+        }
+
+        function updateDayNightCycle(delta)
+        {
+            const speed = 10;
+            const uniforms = sky.material.uniforms;
+            const phi = THREE.MathUtils.degToRad(90 - effectController.elevation);
+            const theta = THREE.MathUtils.degToRad(effectController.azimuth);
+
+            sun.setFromSphericalCoords(1,phi,theta);
+
+            uniforms['sunPosition'].value.copy(sun);
+            directionalLight.position.copy(sun);
+            effectController.elevation += delta * speed;
+        }
+
+        function renderFrame()
+        {
+            let deltaTime = clock.getDelta();
+            moveCube();
+            updatePhysics(deltaTime);
+            updateDayNightCycle(deltaTime);
+            renderer.render(scene,camera);
+            requestAnimationFrame(renderFrame);
+        }
+    </script>
+</body>
+</html>
