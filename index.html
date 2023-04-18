@@ -13,6 +13,7 @@
     </style>
 </head>
 <body>
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
     <script type="importmap">
         {
             "imports": {
@@ -23,29 +24,29 @@
     </script>
     <script src="./ammo.js"></script>
     <script type="module">
-        //TODO: fix player not moving after making the camera face the ground (wtf)
-
         //https://raw.githubusercontent.com/bulletphysics/bullet3/master/docs/Bullet_User_Manual.pdf
         //https://threejs.org/docs/index.html?q=light#api/en/lights/DirectionalLight
         //https://threejs.org/examples/?q=sun#webgl_shaders_sky
+        //https://stackoverflow.com/questions/38052621/moving-the-camera-in-the-direction-its-facing-with-threejs
+        //https://github.com/mrdoob/three.js/blob/master/examples/webgl_multiple_views.html
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { Sky } from 'three/addons/objects/Sky.js';
 
         //THREE js variables
-        let scene,renderer,camera,playerObject,sky,directionalLight,clock;
+        let scene,renderer,playerObject,monsterObject,sky,directionalLight,clock;
 
         //AMMMO variables
         let physicsWorld,ammoTmpTrans,ammoTmpPos,ammoTmpQuat;
 
         //Events variables
-        let mouseDown,mouseX,mouseY;
+        let mouseDown = false,mouseX,mouseY;
 
         //THREE js constants
-        const cubeMoveDirection = {left:0,right:0,forward:0,back:0};
         const playerPivot = new THREE.Object3D();
-        const cameraPivot = new THREE.Object3D();
-        const dir = new THREE.Vector3();
+        const monsterPivot = new THREE.Object3D();
+        const playerCameraPivot = new THREE.Object3D();
+        const monsterCameraPivot = new THREE.Object3D();
         const sun = new THREE.Vector3();
 
         const effectController = {
@@ -61,6 +62,14 @@
         //AMMO constants
         const rigidBodies = [];
 
+        //Player
+        let playerCameraRotation = {left:0,right:0,up:0,down:0};
+        let monsterCameraRotation = {left:0,right:0,up:0,down:0};
+        let playerAttacking = false,playerRunning = false,animationFinished = true,animationsMap = new Map(),animationPlaying = "",playerMixer,playerCamera;
+
+        //Monster
+        let monsterAttacking = false,monsterRunning = false,monsterAnimationFinished = true,monsterIdleFinished = true,monsterAnimationsMap = new Map(),monsterAnimationPlaying = "",monsterMixer,monsterCamera;
+
         Ammo().then(start);
 
         function start()
@@ -71,7 +80,8 @@
             setupGraphics();
             createMap();
             createPlane();
-            createCube();
+            loadPlayer(0,0,0);
+            loadMonster(0,0,30);
             setupHandlers();
             renderFrame();
         }
@@ -80,103 +90,128 @@
         {
             window.addEventListener("keydown",keydownHandler);
             window.addEventListener("keyup",keyupHandler);
-            window.addEventListener("mousemove",onMouseMove);
-            window.addEventListener("mousedown",onMouseDown);
-            window.addEventListener("mouseup",onMouseUp);
             window.addEventListener("resize",resize);
         }
 
         function keydownHandler(event)
         {
             event.preventDefault();
-            let key = event.key;
-
-            switch(key)
+            if(event.key == "w")
             {
-                case "w":
-                    cubeMoveDirection.forward = 1;
-                    break;
-
-                case "s":
-                    cubeMoveDirection.back = 1;
-                    break;
-
-                case "a":
-                    cubeMoveDirection.left = 1;
-                    break;
-
-                case "d":
-                    cubeMoveDirection.right = 1;
-                    break;
+                playerRunning = true;
+            }
+            else if(event.key == "q")
+            {
+                playerAttacking = true;
+            }
+            else if(event.key == "a")
+            {
+                playerCameraRotation.left = 1;
+            }
+            else if(event.key == "d")
+            {
+                playerCameraRotation.right = 1;
+            }
+            else if(event.key == "e")
+            {
+                playerCameraRotation.up = 1;
+            }
+            else if(event.key == "r")
+            {
+                playerCameraRotation.down = 1;
+            }
+            else if(event.key == "ArrowLeft")
+            {
+                monsterCameraRotation.left = 1;
+            }
+            else if(event.key == "ArrowRight")
+            {
+                monsterCameraRotation.right = 1;
+            }
+            else if(event.key == "ArrowUp")
+            {
+                monsterRunning = true;
+            }
+            else if(event.key == "PageUp")
+            {
+                monsterCameraRotation.up = 1;
+            }
+            else if(event.key == "PageDown")
+            {
+                monsterCameraRotation.down = 1;
+            }
+            else if(event.key == "0")
+            {
+                monsterAttacking = true;
             }
         }
 
         function keyupHandler(event)
         {
-            let key = event.key;
-
-            switch(key)
+            if(event.key == "w")
             {
-                case "w":
-                    cubeMoveDirection.forward = 0;
-                    break;
-
-                case "s":
-                    cubeMoveDirection.back = 0;
-                    break;
-
-                case "a":
-                    cubeMoveDirection.left = 0;
-                    break;
-
-                case "d":
-                    cubeMoveDirection.right = 0;
-                    break;
+                playerRunning = false;
+            }
+            else if(event.key == "q")
+            {
+                playerAttacking = false;
+            }
+            else if(event.key == "a")
+            {
+                playerCameraRotation.left = 0;
+            }
+            else if(event.key == "d")
+            {
+                playerCameraRotation.right = 0;
+            }
+            else if(event.key == "e")
+            {
+                playerCameraRotation.up = 0;
+            }
+            else if(event.key == "r")
+            {
+                playerCameraRotation.down = 0;
+            }
+            else if(event.key == "ArrowLeft")
+            {
+                monsterCameraRotation.left = 0;
+            }
+            else if(event.key == "ArrowRight")
+            {
+                monsterCameraRotation.right = 0;
+            }
+            else if(event.key == "ArrowUp")
+            {
+                monsterRunning = false;
+            }
+            else if(event.key == "PageUp")
+            {
+                monsterCameraRotation.up = 0;
+            }
+            else if(event.key == "PageDown")
+            {
+                monsterCameraRotation.down = 0;
+            }
+            else if(event.key == "0")
+            {
+                monsterAttacking = false;
             }
         }
 
-        function onMouseMove(event) 
+        function rotateCamera(characterObject,characterCameraPivot,deltaX, deltaY)
         {
-            if (!mouseDown) {
-                return;
-            }
-
-            event.preventDefault();
-
-            var deltaX = event.clientX - mouseX,
-                deltaY = event.clientY - mouseY;
-            mouseX = event.clientX;
-            mouseY = event.clientY;
-            rotateScene(deltaX, deltaY);
+            characterObject.rotation.y += deltaX / 500;
+            characterCameraPivot.rotation.x = clamp((characterCameraPivot.rotation.x + deltaY / 500),-0.66,-0.136);
         }
 
-        function onMouseDown(event) 
+        function clamp(number,min,max)
         {
-            event.preventDefault();
-
-            mouseDown = true;
-            mouseX = event.clientX;
-            mouseY = event.clientY;
-        }
-
-        function onMouseUp(event) 
-        {
-            event.preventDefault();
-
-            mouseDown = false;
-        }
-
-        function rotateScene(deltaX, deltaY) 
-        {
-            playerObject.rotation.y += deltaX / 500;
-            cameraPivot.rotation.x -= deltaY / 500;
+            return Math.min(max,Math.max(number,min));
         }
 
         function  resize()
         {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize( window.innerWidth, window.innerHeight ); 
+            renderer.setSize( window.innerWidth, window.innerHeight );
         }
 
         function setupPhysicsWorld()
@@ -199,11 +234,9 @@
             sky = new Sky();
             sky.scale.setScalar( 450000 );
             scene.add(sky);
-            
+
             directionalLight = new THREE.DirectionalLight(0xffffff);
             scene.add(directionalLight);
-
-            camera = new THREE.PerspectiveCamera(75,window.innerWidth / window.innerHeight,0.2,5000);
 
             renderer = new THREE.WebGLRenderer({antialias: true});
             renderer.setSize(window.innerWidth,window.innerHeight);
@@ -242,21 +275,6 @@
             const scale = {x:800, y:2, z:800};
             const mass = 0;
             createBoxCollider(pos.x,pos.y,pos.z,scale.x,scale.y,scale.z,mass);
-
-            // let blockPlane = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshPhongMaterial(
-            //     {
-            //         color: 0xa0afa4,
-            //         opacity: 0,
-            //         transparent: true
-            //     }));
-            // // let blockPlane = new THREE.Object3D();
-            // groundObjects.push(blockPlane);
-            // blockPlane.position.set(pos.x,pos.y,pos.z);
-            // blockPlane.scale.set(scale.x,scale.y,scale.z);
-            // blockPlane.castShadow = true;
-            // blockPlane.receiveShadow = true;
-
-            // scene.add(blockPlane);
         }
 
         function createWalls()
@@ -308,7 +326,7 @@
                 {x:54,z:-31.6}
             ]
 
-            coords.forEach((coord) => 
+            coords.forEach((coord) =>
             {
                 createTreeCollider(coord.x,0,coord.z);
             });
@@ -337,7 +355,7 @@
             const mass = 0;
             const radius = 0.5;
             const height = 3;
-            const coords = 
+            const coords =
             [
                 {x:-34.7,z:64.2},
                 {x:-57,z:58},
@@ -410,13 +428,9 @@
                 const height = 13;
                 createCapsuleCollider(posX,posY,posZ,mass,radius,height);
 
-                const light = new THREE.PointLight(0xFBB741,10,100,4);
+                const light = new THREE.PointLight(0xFBB741,2,70,4);
                 light.position.set(posX,10 + posY,posZ);
                 scene.add( light );
-
-                const sphereSize = 1;
-                const pointLightHelper = new THREE.PointLightHelper( light, sphereSize );
-                scene.add( pointLightHelper );
 
             },
             function (xhr) {
@@ -428,29 +442,196 @@
             );
         }
 
-        function createCube()
+        function loadPlayer(posX,posY,posZ)
         {
-            const pos = {x:0,y:0,z:0};
-            const scale = {x:1,y:1,z:1};
-            const mass = 80;
+            const loader = new GLTFLoader();
+            loader.load(
+                './char test/character.glb',
+                function ( gltf ) {
+                    const playerModel = gltf.scene;
+                    playerModel.traverse(function(object)
+                    {
+                        if(object.isMesh)
+                        {
+                            object.castShadow = true;
+                            object.receiveShadow = true;
+                        }
+                    });
+                    createPlayer(posX,posY,posZ,playerModel);
+                    playerMixer = new THREE.AnimationMixer(playerModel);
+                    playerMixer.addEventListener('finished', ( event ) => {
+                        animationFinished = true;
+                    });
 
-            let cube = playerObject = new THREE.Mesh(new THREE.BoxGeometry(),new THREE.MeshPhongMaterial({color: 0xa5f382}));
-            playerPivot.add(cube);
-            cube.position.set(pos.x,pos.y,pos.z);
-            cube.scale.set(scale.x,scale.y,scale.z);
-            cube.add(cameraPivot);
-            cameraPivot.add(camera);
-            camera.position.set(0,5,5);
-            camera.lookAt(new THREE.Vector3(0,0,0));
-            cube.castShadow = true;
-            cube.receiveShadow = true;
+                    gltf.animations.forEach((a) =>
+                    {
+                        animationsMap.set(a.name,playerMixer.clipAction(a));
+                    });
+
+                    const slashAnim = animationsMap.get("Slash");
+                    slashAnim.setLoop(THREE.LoopOnce);
+                    slashAnim.clampWhenFinished = true;
+                    const action = animationsMap.get("IDLE");
+                    animationPlaying = "IDLE";
+                    action.play();
+                },
+                function ( xhr ) {
+
+                    console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+
+                },
+                function ( error ) {
+
+                    console.log( error );
+
+                }
+            );
+
+        }
+
+        function createPlayer(posX,posY,posZ,mesh)
+        {
+            const pos = {x:posX,y:posY,z:posZ};
+            const scale = {x:3,y:3,z:3};
+            const mass = 80;
+            const radius = 1;
+            const height = 1;
+
+            playerObject = mesh;
+            playerObject.scale.set(scale.x,scale.y,scale.z);
+            playerObject.position.set(0,pos.y-1.5,0);
+            playerObject.rotation.y += THREE.MathUtils.degToRad(180);
+            playerPivot.add(playerObject);
+            playerPivot.position.set(pos.x,pos.y,pos.z)
+            playerObject.add(playerCameraPivot);
+
+            playerCamera = new THREE.PerspectiveCamera(60,window.innerWidth / window.innerHeight,0.2,5000);
+            playerCameraPivot.add(playerCamera);
+            playerCamera.position.set(0,5,5);
+            playerCamera.lookAt(new THREE.Vector3(0,0,0));
+            playerCameraPivot.rotation.y += THREE.MathUtils.degToRad(180);
 
             scene.add(playerPivot);
-            const body = createBoxCollider(pos.x,pos.y,pos.z,scale.x,scale.y,scale.z,mass);
+
+            const transform = new Ammo.btTransform();
+            transform.setIdentity();
+            transform.setOrigin(new Ammo.btVector3(pos.x,pos.y,pos.z));
+            transform.setRotation(new Ammo.btQuaternion(0,0,0,1));
+            const motionState = new Ammo.btDefaultMotionState(transform);
+            const colShape = new Ammo.btCapsuleShape(radius,height);
+            colShape.setMargin(0.05);
+            const localInertia = new Ammo.btVector3(0,0,0);
+            colShape.calculateLocalInertia(mass,localInertia);
+
+            const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass,motionState,colShape,localInertia);
+            const body = new Ammo.btRigidBody(rbInfo);
+            body.setFriction(4);
+            body.setRollingFriction(10);
+
+            body.setActivationState( 4 );
+            physicsWorld.addRigidBody(body);
             body.setAngularFactor(0);
 
             playerPivot.userData.physicsBody = body;
             rigidBodies.push(playerPivot);
+
+        }
+
+        function loadMonster(posX,posY,posZ)
+        {
+            const loader = new GLTFLoader();
+            loader.load(
+                './monster test/monster.glb',
+                function ( gltf ) {
+                    const monsterModel = gltf.scene;
+                    monsterModel.traverse(function(object)
+                    {
+                        if(object.isMesh)
+                        {
+                            object.castShadow = true;
+                            object.receiveShadow = true;
+                        }
+                    });
+                    createMonster(posX,posY,posZ,monsterModel);
+                    monsterMixer = new THREE.AnimationMixer(monsterModel);
+                    monsterMixer.addEventListener('finished', ( event ) => {
+                        monsterAnimationFinished = true;
+                        monsterIdleFinished = true;
+                    });
+
+                    gltf.animations.forEach((a) =>
+                    {
+                        monsterAnimationsMap.set(a.name,monsterMixer.clipAction(a));
+                    });
+
+                    const attackAnim = monsterAnimationsMap.get("Attack");
+                    attackAnim.setLoop(THREE.LoopOnce);
+                    attackAnim.clampWhenFinished = true;
+                    const idleAnim = monsterAnimationsMap.get("IDLE");
+                    idleAnim.setLoop(THREE.LoopOnce);
+                    idleAnim.clampWhenFinished = true;
+                    const idleAnim2 = monsterAnimationsMap.get("Breathing_IDLE");
+                    idleAnim2.setLoop(THREE.LoopOnce);
+                    idleAnim2.clampWhenFinished = true;
+                },
+                function ( xhr ) {
+
+                    console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+
+                },
+                function ( error ) {
+
+                    console.log( error );
+
+                }
+            );
+        }
+
+        function createMonster(posX,posY,posZ,mesh)
+        {
+            const pos = {x:posX,y:posY,z:posZ};
+            const scale = {x:5,y:5,z:5};
+            const mass = 80;
+            const radius = 1;
+            const height = 1;
+
+            monsterObject = mesh;
+            monsterObject.scale.set(scale.x,scale.y,scale.z);
+            monsterObject.position.set(0,pos.y-1.5,0);
+            monsterPivot.add(monsterObject);
+            monsterPivot.position.set(pos.x,pos.y,pos.z);
+
+            monsterObject.add(monsterCameraPivot);
+
+            monsterCamera = new THREE.PerspectiveCamera(60,window.innerWidth / window.innerHeight,0.2,5000);
+            monsterCameraPivot.add(monsterCamera);
+            monsterCamera.position.set(0,5,5);
+            monsterCamera.lookAt(new THREE.Vector3(pos.x,0,pos.z));
+            monsterCameraPivot.rotation.y += THREE.MathUtils.degToRad(180);
+
+            scene.add(monsterPivot);
+
+            const transform = new Ammo.btTransform();
+            transform.setIdentity();
+            transform.setOrigin(new Ammo.btVector3(pos.x,pos.y,pos.z));
+            transform.setRotation(new Ammo.btQuaternion(0,0,0,1));
+            const motionState = new Ammo.btDefaultMotionState(transform);
+            const colShape = new Ammo.btCapsuleShape(radius,0.5);
+            colShape.setMargin(0.05);
+            const localInertia = new Ammo.btVector3(0,0,0);
+            colShape.calculateLocalInertia(mass,localInertia);
+
+            const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass,motionState,colShape,localInertia);
+            const body = new Ammo.btRigidBody(rbInfo);
+            body.setFriction(4);
+            body.setRollingFriction(10);
+
+            body.setActivationState( 4 );
+            physicsWorld.addRigidBody(body);
+            body.setAngularFactor(0);
+
+            monsterPivot.userData.physicsBody = body;
+            rigidBodies.push(monsterPivot);
         }
 
         function createCapsuleCollider(posX,posY,posZ,mass,radius,height)
@@ -485,32 +666,20 @@
             return body;
         }
 
-
-
-        function moveCube()
+        function move(body,camera,running,attacking)
         {
-            const speed = 30;
-            
-            const moveX = cubeMoveDirection.right - cubeMoveDirection.left;
-            const moveZ = cubeMoveDirection.back - cubeMoveDirection.forward;
-
-            const physicsBody = playerPivot.userData.physicsBody;
-            const playerPos = physicsBody.getWorldTransform().getOrigin();
-            console.log(playerPos.x() + "---" + playerPos.z());
-
-            if(moveX == 0 && moveZ == 0)
+            if(!(running && !attacking))
                 return;
 
-            camera.getWorldDirection(dir);
-            const z = dir.clone().multiplyScalar(moveZ);
-            const x = dir.clone().applyAxisAngle(new THREE.Vector3(0,1,0),degToRad(90)).multiplyScalar(moveX);
+            const speed = 30;
+            const characterPos = body.getWorldTransform().getOrigin();
 
-            const move = new THREE.Vector3(-(z.x + x.x),0,-(z.z + x.z));
-            physicsBody.setLinearVelocity(new Ammo.btVector3(move.x,move.y,move.z).op_mul(speed));
-        }
+            let direction = new THREE.Vector3();
+            camera.getWorldDirection(direction);
+            direction.y = 0;
+            direction.normalize().multiplyScalar(speed);
+            body.setLinearVelocity(new Ammo.btVector3(direction.x,0,direction.z));
 
-        function degToRad(degrees) {
-            return degrees * (Math.PI / 180);
         }
 
         function updatePhysics(deltaTime)
@@ -548,13 +717,136 @@
             effectController.elevation += delta * speed;
         }
 
+        function updatePlayerMixer(delta)
+        {
+            if(animationFinished)
+            {
+                let playerMove = playerRunning && !playerAttacking;
+                const currentAnimation = animationsMap.get(animationPlaying);
+                let nextAnimation,animationToPlay;
+
+                if(!playerRunning && !playerAttacking)
+                {
+                    nextAnimation = animationsMap.get("IDLE");
+                    animationToPlay = "IDLE";
+                }
+                else
+                {
+                    animationToPlay = playerAttacking ? "Slash" : "Running.001";
+                    nextAnimation = animationsMap.get(animationToPlay);
+                }
+
+                if(currentAnimation != nextAnimation)
+                {
+                    if(currentAnimation)
+                        currentAnimation.fadeOut(0.5);
+                    nextAnimation.reset().fadeIn(0.5).play();
+                    animationPlaying = animationToPlay;
+                }
+                else if(animationToPlay == "Slash" && animationFinished)
+                {
+                    currentAnimation.reset();
+                    animationFinished = false;
+                }
+            }
+
+            if(playerMixer)
+                playerMixer.update(delta)
+        }
+
+        function updateMonsterMixer(delta)
+        {
+            if(monsterAnimationFinished)
+            {
+                const currentAnimation = monsterAnimationsMap.get(monsterAnimationPlaying);
+                let nextAnimation,animationToPlay = "";
+
+                if(!monsterRunning && !monsterAttacking)
+                {
+                    if(monsterIdleFinished)
+                    {
+                        const rnd = Math.floor(Math.random() * 3);
+                        animationToPlay = rnd == 0 ? "IDLE" : "Breathing_IDLE";
+                    }
+                    else
+                        animationToPlay = monsterAnimationPlaying;
+                }
+                else
+                    animationToPlay = monsterAttacking ? "Attack" : "Walk";
+
+                nextAnimation = monsterAnimationsMap.get(animationToPlay);
+                if(!nextAnimation)
+                    return;
+
+                if(currentAnimation != nextAnimation)
+                {
+                    if(currentAnimation)
+                        currentAnimation.fadeOut(0.5);
+
+                    nextAnimation.reset().fadeIn(0.5).play();
+                    monsterAnimationPlaying = animationToPlay;
+                    monsterIdleFinished = true;
+                }
+                else if(((animationToPlay == "Attack" && monsterAnimationFinished) || ((animationToPlay == "IDLE" || animationToPlay == "Breathing_IDLE") && monsterIdleFinished)))
+                {
+                    if(currentAnimation)
+                        currentAnimation.reset();
+
+                    if(animationToPlay == "Attack")
+                        monsterAnimationFinished = false;
+                    else
+                        monsterIdleFinished = false;
+                }
+            }
+
+            if(monsterMixer)
+                monsterMixer.update(delta)
+        }
+
+        function render(camera,left)
+        {
+            const bottom = Math.floor(window.innerHeight * 0);
+            const width = Math.floor(window.innerWidth * 0.5);
+            const height = Math.floor(window.innerHeight * 1);
+
+            renderer.setViewport(left,bottom,width,height);
+            renderer.setScissor(left,bottom,width,height);
+            renderer.setScissorTest(true);
+
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+
+            renderer.render(scene,camera);
+        }
+
+        function updateCameraRotation(characterObject,cameraPivot,cameraRotation)
+        {
+            const cameraSpeed = 10;
+            const deltaX = (cameraRotation.right - cameraRotation.left) * cameraSpeed;
+            const deltaY = (cameraRotation.up - cameraRotation.down) * cameraSpeed;
+            rotateCamera(characterObject,cameraPivot,deltaX,deltaY);
+        }
+
         function renderFrame()
         {
             let deltaTime = clock.getDelta();
-            moveCube();
+            move(playerPivot.userData.physicsBody,playerCamera,playerRunning,!animationFinished);
+            move(monsterPivot.userData.physicsBody,monsterCamera,monsterRunning,!monsterAnimationFinished);
             updatePhysics(deltaTime);
+            updatePlayerMixer(deltaTime);
+            updateMonsterMixer(deltaTime);
             updateDayNightCycle(deltaTime);
-            renderer.render(scene,camera);
+
+            if(playerObject)
+                updateCameraRotation(playerObject,playerCameraPivot,playerCameraRotation);
+            if(monsterObject)
+                updateCameraRotation(monsterObject,monsterCameraPivot,monsterCameraRotation);
+
+            if(playerCamera)
+                render(playerCamera,Math.floor(window.innerWidth * 0));
+            if(monsterCamera)
+                render(monsterCamera,Math.floor(window.innerWidth * 0.5));
+
             requestAnimationFrame(renderFrame);
         }
     </script>

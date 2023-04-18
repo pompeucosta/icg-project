@@ -5,6 +5,12 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
+    <style>
+        body
+        {
+            margin: 0%;
+        }
+    </style>
 </head>
 <body>
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
@@ -19,18 +25,14 @@
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        let mesh,mixer,clips,scene,renderer,camera,clock,action;
+        let mixer,scene,renderer,camera,clock,action = [];
         scene = new THREE.Scene();
         scene.background = new THREE.Color(0xbfd1e5);
         clock = new THREE.Clock();
         camera = new THREE.PerspectiveCamera(75,window.innerWidth / window.innerHeight,0.2,5000);
         camera.position.z += 5;
         camera.position.y += 1.5;
-        let hemiLight = new THREE.HemisphereLight(0xffffff,0xffffff,1);
-        hemiLight.color.setHSL(0.6,0.6,0.6);
-        hemiLight.groundColor.setHSL(0.1,1,0.4);
-        hemiLight.position.set(0,15,0);
-        scene.add(hemiLight);
+
         let dirLight = new THREE.DirectionalLight(0xffffff,1);
         dirLight.color.setHSL(0.1,1,0.95);
         dirLight.position.set(0,5,0);
@@ -44,8 +46,11 @@
         window.addEventListener("keydown",keydownHandler);
         window.addEventListener("keyup",keyupHandler);
         let animationPlaying = "",animationToPlay = "";
-        let animationFinished = false;
+        let animationFinished = true;
         let animationsMap = new Map();
+
+        let attacking = false;
+        let running = false;
 
         const loader = new GLTFLoader();
             loader.load(
@@ -61,25 +66,24 @@
                     });
                     scene.add( model );
                     mixer = new THREE.AnimationMixer(model);
-                    // mixer.addEventListener("finished",(e) => 
-                    // {
-                    //     console.log("finished");
-                    //     if(animationPlaying == "Slash")
-                    //     {
-                    //         animationFinished = true;
-                    //     }
-                    // });
+                    mixer.addEventListener('finished', ( event ) => {
+                        animationFinished = true;
+                    });
+
                     console.log(mixer);
                     clips = gltf.animations;
                     clips.forEach((a) => 
                     {
                         animationsMap.set(a.name,mixer.clipAction(a));
                     });
+
+                    const slashAnim = animationsMap.get("Slash");
+                    slashAnim.setLoop(THREE.LoopOnce);
+                    slashAnim.clampWhenFinished = true;
                     action = animationsMap.get("IDLE");
                     console.log(gltf.animations);
                     animationToPlay = "IDLE";
                     animationPlaying = "IDLE";
-                    // action = mixer.clipAction(clip);
                     action.play();
                 },
                 // called while loading is progressing
@@ -114,7 +118,11 @@
             switch(key)
             {
                 case "q":
-                    animationToPlay = "Slash";
+                    attacking = true;
+                    break;
+
+                case "w":
+                    running = true;
                     break;
             }
         }
@@ -126,31 +134,44 @@
             switch(key)
             {
                 case "q":
-                    animationToPlay = "IDLE";
+                    attacking = false;
+                    break;
+
+                case "w":
+                    running = false;
                     break;
             }
-
-            // if(event.keyCode == 32)
-            //     cubeMoveDirection.up = 0;
         }
 
         function update(delta)
         {
-            // console.log(animationToPlay);
-            if(animationToPlay != animationPlaying)
+            if(animationFinished)
             {
-                if((animationPlaying == "Slash" && animationFinished) || animationPlaying != "Slash")
+                const currentAnimation = animationsMap.get(animationPlaying);
+                let nextAnimation;
+
+                if(!running && !attacking)
                 {
-                    const current = animationsMap.get(animationPlaying);
-                    const toPlay = animationsMap.get(animationToPlay);
-                    if(!toPlay)
-                    {
-                        console.log(animationToPlay);
-                        return;
-                    }
-                    current.fadeOut(0.5);
-                    toPlay.reset().fadeIn(0.5).play();
+                    nextAnimation = animationsMap.get("IDLE");
+                    animationToPlay = "IDLE";
+                }
+                else
+                {
+                    animationToPlay = attacking ? "Slash" : "Running.001";
+                    nextAnimation = animationsMap.get(animationToPlay);
+                }
+                
+                if(currentAnimation != nextAnimation)
+                {
+                    if(currentAnimation)
+                        currentAnimation.fadeOut(0.5);
+                    nextAnimation.reset().fadeIn(0.5).play();
                     animationPlaying = animationToPlay;
+                } 
+                else if(animationToPlay == "Slash" && animationFinished)
+                {
+                    currentAnimation.reset();
+                    animationFinished = false;
                 }
             }
 
