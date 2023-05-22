@@ -44,7 +44,7 @@ Ammojs: https://github.com/kripken/ammo.js/
 
 bullet: https://github.com/bulletphysics
 
-For references about the physics I look at the bullet documentation
+For references about the physics I used the bullet documentation
 
 Documentation: https://pybullet.org/Bullet/BulletFull/
 
