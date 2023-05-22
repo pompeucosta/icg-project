@@ -15,6 +15,7 @@ Below is a table with all the models (models include textures) and their source.
 | Trees, Mushrooms and other plants | Unity store |       https://assetstore.unity.com/packages/3d/environments/hand-painted-nature-kit-lite-69220      |
 |       House ground mushrooms      | Unity store | https://assetstore.unity.com/packages/3d/environments/landscapes/free-low-poly-nature-forest-205742 |
 |             Mountains             | Unity store |   https://assetstore.unity.com/packages/3d/environments/landscapes/lowpoly-environment-pack-99479   |
+|             Tiki torch            |  Sketchfab  |           https://sketchfab.com/3d-models/outdoor-torch-8f9ceeff9f264a2688e7280e0d379c3f            |
 
 The ground is made of cubes with a texture.
 
